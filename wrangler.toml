@@ -7,3 +7,7 @@ routes = [
 
 [site]
 bucket = "./public"
+
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "echo_metrics"
