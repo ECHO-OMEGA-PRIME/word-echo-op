@@ -6,6 +6,13 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 
+    // Health endpoint
+    if (url.pathname === '/health') {
+      return new Response(JSON.stringify({ ok: true, service: 'word-echo-op', version: '1.0.1', timestamp: new Date().toISOString() }), {
+        headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+      });
+    }
+
     // Security headers
     const securityHeaders = {
       'X-Content-Type-Options': 'nosniff',
