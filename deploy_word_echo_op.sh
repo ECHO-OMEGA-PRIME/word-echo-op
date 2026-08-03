@@ -12,7 +12,7 @@ STAGING_PORT=8465
 RUN_USER=word-echo-op
 RUNTIME_MOUNT=/opt/word-echo-op-runtime
 STAGING_MOUNT=/opt/word-echo-op-staging
-TEST_PYTHON="${WORD_ECHO_TEST_PYTHON:-/usr/bin/python3}"
+TEST_PYTHON="${WORD_ECHO_TEST_PYTHON:-/home/forge/echo-worker-server/venv/bin/python}"
 STRICT_BUNDLE=/mnt/cf_kv_r2/workers/word-echo-op/source/index.js
 STRICT_BINDINGS=/mnt/cf_kv_r2/workers/word-echo-op/bindings.json
 STRICT_SETTINGS=/mnt/cf_kv_r2/workers/word-echo-op/settings.json
@@ -117,6 +117,10 @@ flock -n 9 || { echo "another Word Echo deploy/finalization holds the release lo
 for required in app.py schema.sql smoke_live.py migration_contract.json systemd/word-echo-op.service public/index.html src/index.js; do
   [ -f "$SRC_DIR/$required" ] || { echo "invalid source directory: missing $required" >&2; exit 2; }
 done
+if [ ! -x "$TEST_PYTHON" ] || ! "$TEST_PYTHON" -c "import pytest" 2>/dev/null; then
+  echo "verified pytest runner unavailable" >&2
+  exit 2
+fi
 if ss -ltnH "sport = :$STAGING_PORT" | grep -q .; then
   echo "staging port $STAGING_PORT is occupied" >&2
   exit 2
@@ -155,7 +159,11 @@ contract_value() {
 
 "$TEST_PYTHON" -m py_compile "$RELEASE_DIR/app.py" "$RELEASE_DIR/smoke_live.py"
 "$TEST_PYTHON" -m pytest -q --confcutdir="$RELEASE_DIR" "$RELEASE_DIR/tests"
-"$TEST_PYTHON" -m venv --system-site-packages "$RELEASE_DIR/.venv"
+python3 -m venv "$RELEASE_DIR/.venv"
+PIP_CACHE_DIR="$BASE_DIR/pip-cache" \
+  "$RELEASE_DIR/.venv/bin/python" -m pip install \
+    --disable-pip-version-check --no-input --only-binary=:all: \
+    --requirement "$RELEASE_DIR/requirements.txt" >/dev/null
 "$RELEASE_DIR/.venv/bin/python" -c "import fastapi,uvicorn; assert fastapi.__version__ == '0.136.1'; assert uvicorn.__version__ == '0.46.0'"
 systemd-analyze verify "$RELEASE_DIR/systemd/word-echo-op.service"
 
