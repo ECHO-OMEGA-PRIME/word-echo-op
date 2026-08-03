@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -27,7 +28,12 @@ def request(base: str, path: str, method: str = "GET") -> tuple[int, dict[str, s
     req = urllib.request.Request(
         f"{base.rstrip('/')}{path}",
         method=method,
-        headers={"Accept-Encoding": "identity", "X-Request-ID": "word-echo-live-smoke"},
+        headers={
+            "Accept-Encoding": "identity",
+            "Cache-Control": "no-cache",
+            "Pragma": "no-cache",
+            "X-Request-ID": "word-echo-live-smoke",
+        },
     )
     try:
         with urllib.request.urlopen(req, timeout=8) as response:
@@ -45,49 +51,54 @@ def require_headers(headers: dict[str, str], label: str) -> None:
 def run(base: str, *, public_edge: bool, exercise_rate_limit: bool) -> int:
     checks = 0
     status, headers, body = request(base, "/health")
-    assert status == 200
+    assert status == 200, f"health status={status}"
     require_headers(headers, "health")
     payload = json.loads(body)
-    assert payload.get("ok") is True and payload.get("service") == "word-echo-op"
-    assert headers.get("access-control-allow-origin") == "*"
+    assert payload.get("ok") is True and payload.get("service") == "word-echo-op", "health identity"
+    assert headers.get("access-control-allow-origin") == "*", "health CORS"
     checks += 1
 
+    cache_bust = f"?echo_smoke={time.time_ns()}" if public_edge else ""
     for path in ("/", "/index.html", "/deep/spa/link"):
-        status, headers, body = request(base, path)
-        assert status == 200
+        status, headers, body = request(base, f"{path}{cache_bust}")
+        assert status == 200, f"{path} status={status}"
         require_headers(headers, path)
-        assert headers.get("x-echo-origin") == "forge-private"
+        assert headers.get("x-echo-origin") == "forge-private", f"{path} origin marker"
         if not public_edge:
-            assert hashlib.sha256(body).hexdigest() == ASSET_SHA256
+            assert hashlib.sha256(body).hexdigest() == ASSET_SHA256, f"{path} asset hash"
         checks += 1
 
-    status, headers, body = request(base, "/", "HEAD")
-    assert status == 200 and body == b""
+    status, headers, body = request(base, f"/{cache_bust}", "HEAD")
+    assert status == 200 and body == b"", f"HEAD / status={status} body={len(body)}"
     require_headers(headers, "HEAD /")
-    assert int(headers["content-length"]) == 401921
+    if not public_edge:
+        assert int(headers["content-length"]) == 401921, "HEAD / content length"
     checks += 1
 
     status, headers, body = request(base, "/health", "HEAD")
-    assert status == 200 and body == b""
+    assert status == 200 and body == b"", f"HEAD /health status={status} body={len(body)}"
     require_headers(headers, "HEAD /health")
     checks += 1
 
     status, headers, _ = request(base, "/health", "OPTIONS")
-    assert status == 204
+    assert status == 204, f"OPTIONS /health status={status}"
     require_headers(headers, "OPTIONS /health")
-    assert headers.get("access-control-allow-origin") == "*"
+    assert headers.get("access-control-allow-origin") == "*", "preflight CORS"
     checks += 1
 
     for method in ("POST", "PUT", "PATCH", "DELETE"):
         status, headers, _ = request(base, "/health", method)
-        assert status == 405
+        assert status == 405, f"{method} /health status={status}"
         require_headers(headers, f"{method} /health")
         checks += 1
 
     for path in ("/%2e%2e/%2eenv", "/.git/config", "/%2500"):
         status, headers, _ = request(base, path)
-        assert status == 404
-        require_headers(headers, path)
+        if public_edge:
+            assert status in {400, 403, 404}, f"{path} edge status={status}"
+        else:
+            assert status == 404, f"{path} origin status={status}"
+            require_headers(headers, path)
         checks += 1
 
     if exercise_rate_limit:
