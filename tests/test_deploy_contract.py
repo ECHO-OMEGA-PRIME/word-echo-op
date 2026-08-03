@@ -39,6 +39,7 @@ def test_deploy_gate_contains_required_release_proofs() -> None:
         'ln -sfn current/app.py "$BASE_DIR/app.py"',
     ):
         assert marker in deploy
+    assert "--single-transaction" not in deploy
     assert "DATABASE_URL" not in deploy
     assert "EnvironmentFile" not in (ROOT / "systemd" / "word-echo-op.service").read_text(encoding="utf-8")
 

@@ -172,7 +172,7 @@ if ! getent passwd "$RUN_USER" >/dev/null; then
   useradd --system --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin --user-group "$RUN_USER"
 fi
 [ "$(id -Gn "$RUN_USER")" = "$RUN_USER" ] || { echo "service identity has supplemental groups" >&2; exit 3; }
-sudo -u postgres psql --single-transaction -v ON_ERROR_STOP=1 -d echo < "$RELEASE_DIR/schema.sql" >/dev/null
+sudo -u postgres psql -v ON_ERROR_STOP=1 -d echo < "$RELEASE_DIR/schema.sql" >/dev/null
 record_receipt provenance_verified
 log "provenance, compile, tests, dependencies, identity, and unit verification GREEN"
 
