@@ -1,0 +1,64 @@
+{
+  "worker_name": "word-echo-op",
+  "migration_date": "2026-08-03",
+  "provenance": {
+    "catalog_rescued_javascript_sha256": "84d29f7b2fa2718801797eb237efa0920cd210baaeeb10104ef8cd9d3c22e437",
+    "strict_recovered_bundle_sha256": "70d697061b7e5d2a0fe2642342d87ebed7046fb2c5de8bfbbd34ca3f70bc3d05",
+    "repository_worker_source_sha256": "2a2ec38174de4277b199980d5ac7f2d379653308535fcbba70353ef151a0c5ee",
+    "repository_worker_source_path": "src/index.js",
+    "bindings_metadata_sha256": "f7dee6a5143bd68fa601e95551f595b8e9ff3aec16dc75e52ab4a231b14be98f",
+    "settings_metadata_sha256": "55e23c9407b8535881e5fa3165b48e2147a13718b795fd6360396b6335582bcd",
+    "static_manifest_module_sha256": "63ffcbc086d7fdbb5b8471a47303686f90429c8eed5cd628aa79ba24ec384d7b",
+    "relationship": "Catalog rescue, strict recovered bundle, and authored repository source are independent identities. No byte-equivalence claim is made between them."
+  },
+  "static_asset": {
+    "binding": "__STATIC_CONTENT",
+    "source_key_count": 1,
+    "source_value_count": 1,
+    "source_value_bytes": 401921,
+    "source_value_sha256": "364263a47a7a44b12fadaf0f81b83d1a11813e46107e874523e4701468945a14",
+    "source_tree_sha256": "9ae975db3a19f720159ceb843caf954a6e6c7df0ad53fdf1a56c259c3b3c3aab",
+    "target_path": "public/index.html",
+    "equivalence": "exact-bytes"
+  },
+  "handlers": {
+    "fetch": true,
+    "scheduled": false,
+    "queue": false,
+    "email": false
+  },
+  "routes": {
+    "generic_source_routes": ["/", "/health"],
+    "source_non_generic_route_count": 0,
+    "target_non_generic_route_count": 0,
+    "manual_generic_contract_coverage": "2/2",
+    "spa_fallback": "safe GET and HEAD paths serve the exact index payload"
+  },
+  "bindings": {
+    "migrated": {
+      "__STATIC_CONTENT": "immutable local public/index.html"
+    },
+    "removed": {
+      "ANALYTICS": "declared but unused by the Worker source; no data plane or state to migrate"
+    },
+    "d1": false,
+    "r2": false,
+    "durable_objects": false,
+    "queues": false,
+    "secrets": false
+  },
+  "intentional_security_deltas": [
+    "POST, PUT, PATCH, and DELETE are rejected with 405 instead of reaching legacy fetch fallback behavior.",
+    "OPTIONS is accepted only for the public health preflight.",
+    "Complete security headers, path confinement, and bounded rate limiting apply to success and error responses.",
+    "The CSP retains unsafe-inline for compatibility with recovered inline scripts and event handlers; connect-src remains none because the page has no network data source."
+  ],
+  "runtime": {
+    "service_dir": "/home/forge/word-echo-op",
+    "unit": "word-echo-op.service",
+    "origin": "http://127.0.0.1:8464",
+    "staging_origin": "http://127.0.0.1:8465",
+    "database_role": null,
+    "timers": []
+  }
+}

@@ -1,3 +1,7 @@
 node_modules/
 .wrangler/
 .dev.vars
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.venv/

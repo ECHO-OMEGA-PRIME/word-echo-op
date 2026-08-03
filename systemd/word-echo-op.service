@@ -1,0 +1,43 @@
+[Unit]
+Description=Word Echo static site (private cluster replacement)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=word-echo-op
+Group=word-echo-op
+WorkingDirectory=/opt/word-echo-op-runtime
+ExecStart=/opt/word-echo-op-runtime/.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8464 --workers 1 --log-level info --no-access-log
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=PYTHONUNBUFFERED=1
+Environment=WORD_ECHO_ASSET_PATH=/opt/word-echo-op-runtime/public/index.html
+BindReadOnlyPaths=/home/forge/word-echo-op/current:/opt/word-echo-op-runtime
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHome=tmpfs
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectSystem=strict
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+UMask=0077
+MemoryMax=192M
+TasksMax=64
+TimeoutStartSec=30
+TimeoutStopSec=15
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
