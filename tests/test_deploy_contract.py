@@ -49,3 +49,5 @@ def test_route_cutover_has_backup_and_rollback() -> None:
     assert "def rollback" in route
     assert "dns_points_to_tunnel" in route
     assert "echo.vault.get" in route
+    assert "/workers/domains" in route
+    assert "read_only" in route

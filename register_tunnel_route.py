@@ -8,6 +8,7 @@ import json
 import os
 import re
 import stat
+import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
@@ -78,7 +79,7 @@ def cf(method: str, path: str, key: str, payload: dict | None = None):
     return result["result"]
 
 
-def state(key: str) -> tuple[dict, str, list[dict]]:
+def state(key: str) -> tuple[dict, str, list[dict], list[dict]]:
     tunnel = cf("GET", f"/accounts/{ACCOUNT_ID}/cfd_tunnel/{TUNNEL_ID}/configurations", key)
     zones = cf("GET", f"/zones?name={urllib.parse.quote(ZONE_NAME)}", key)
     if len(zones) != 1:
@@ -87,7 +88,10 @@ def state(key: str) -> tuple[dict, str, list[dict]]:
     records = cf(
         "GET", f"/zones/{zone_id}/dns_records?name={urllib.parse.quote(HOSTNAME)}", key
     )
-    return tunnel, zone_id, records
+    domains = cf(
+        "GET", f"/accounts/{ACCOUNT_ID}/workers/domains?hostname={urllib.parse.quote(HOSTNAME)}", key
+    )
+    return tunnel, zone_id, records, domains
 
 
 def mutable_dns(record: dict) -> dict:
@@ -95,7 +99,7 @@ def mutable_dns(record: dict) -> dict:
     return {name: record[name] for name in allowed if name in record}
 
 
-def save_backup(tunnel: dict, zone_id: str, records: list[dict]) -> None:
+def save_backup(tunnel: dict, zone_id: str, records: list[dict], domains: list[dict]) -> None:
     if BACKUP_PATH.exists():
         raise RuntimeError(f"route backup already exists at {BACKUP_PATH}; inspect or rollback first")
     BACKUP_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -104,6 +108,10 @@ def save_backup(tunnel: dict, zone_id: str, records: list[dict]) -> None:
         "tunnel_config": tunnel.get("config") or {},
         "zone_id": zone_id,
         "dns_records": [mutable_dns(record) for record in records],
+        "worker_domains": [
+            {name: domain[name] for name in ("hostname", "service", "zone_id", "zone_name") if name in domain}
+            for domain in domains
+        ],
     }
     descriptor = os.open(BACKUP_PATH, os.O_WRONLY | os.O_CREAT | os.O_EXCL, stat.S_IRUSR | stat.S_IWUSR)
     with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
@@ -126,14 +134,63 @@ def ingress_with_word(config: dict) -> tuple[dict, int]:
     return updated, index
 
 
+def wait_for_dns(key: str, *, present: bool) -> list[dict]:
+    for _ in range(30):
+        _, _, records, _ = state(key)
+        if bool(records) is present:
+            return records
+        time.sleep(1)
+    raise RuntimeError("Cloudflare DNS transition did not converge")
+
+
+def restore_backup(key: str, backup: dict) -> None:
+    cf(
+        "PUT",
+        f"/accounts/{ACCOUNT_ID}/cfd_tunnel/{TUNNEL_ID}/configurations",
+        key,
+        {"config": backup["tunnel_config"]},
+    )
+    _, zone_id, current_records, current_domains = state(key)
+    originals = backup.get("dns_records") or []
+    original_domains = backup.get("worker_domains") or []
+    if len(current_records) > 1 or len(originals) > 1 or len(current_domains) > 1 or len(original_domains) > 1:
+        raise RuntimeError("refusing ambiguous route rollback")
+    if original_domains:
+        if current_records:
+            if (current_records[0].get("meta") or {}).get("read_only"):
+                raise RuntimeError("unexpected managed DNS record blocks Worker-domain restore")
+            cf("DELETE", f"/zones/{zone_id}/dns_records/{current_records[0]['id']}", key)
+            wait_for_dns(key, present=False)
+        if not current_domains:
+            cf("PUT", f"/accounts/{ACCOUNT_ID}/workers/domains", key, original_domains[0])
+            wait_for_dns(key, present=True)
+        return
+    if originals and current_records:
+        cf("PUT", f"/zones/{zone_id}/dns_records/{current_records[0]['id']}", key, originals[0])
+    elif originals:
+        cf("POST", f"/zones/{zone_id}/dns_records", key, originals[0])
+    elif current_records:
+        cf("DELETE", f"/zones/{zone_id}/dns_records/{current_records[0]['id']}", key)
+
+
 def apply(key: str) -> None:
-    tunnel, zone_id, records = state(key)
-    if len(records) > 1:
-        raise RuntimeError("refusing to mutate an ambiguous DNS record set")
-    save_backup(tunnel, zone_id, records)
+    tunnel, zone_id, records, domains = state(key)
+    if len(records) > 1 or len(domains) > 1:
+        raise RuntimeError("refusing to mutate an ambiguous route state")
+    if domains and domains[0].get("service") != "word-echo-op":
+        raise RuntimeError("hostname is attached to an unexpected Worker")
+    save_backup(tunnel, zone_id, records, domains)
     config, index = ingress_with_word(tunnel.get("config") or {})
-    cf("PUT", f"/accounts/{ACCOUNT_ID}/cfd_tunnel/{TUNNEL_ID}/configurations", key, {"config": config})
     try:
+        if domains:
+            cf("DELETE", f"/accounts/{ACCOUNT_ID}/workers/domains/{domains[0]['id']}", key)
+            records = wait_for_dns(key, present=False)
+        cf(
+            "PUT",
+            f"/accounts/{ACCOUNT_ID}/cfd_tunnel/{TUNNEL_ID}/configurations",
+            key,
+            {"config": config},
+        )
         desired = {
             "type": "CNAME",
             "name": HOSTNAME,
@@ -146,12 +203,7 @@ def apply(key: str) -> None:
         else:
             cf("POST", f"/zones/{zone_id}/dns_records", key, desired)
     except Exception:
-        cf(
-            "PUT",
-            f"/accounts/{ACCOUNT_ID}/cfd_tunnel/{TUNNEL_ID}/configurations",
-            key,
-            {"config": tunnel.get("config") or {}},
-        )
+        restore_backup(key, json.loads(BACKUP_PATH.read_text(encoding="utf-8")))
         raise
     print(json.dumps({"action": "applied", "hostname": HOSTNAME, "ingress_index": index}))
 
@@ -160,27 +212,12 @@ def rollback(key: str) -> None:
     backup = json.loads(BACKUP_PATH.read_text(encoding="utf-8"))
     if backup.get("hostname") != HOSTNAME:
         raise RuntimeError("route backup hostname mismatch")
-    cf(
-        "PUT",
-        f"/accounts/{ACCOUNT_ID}/cfd_tunnel/{TUNNEL_ID}/configurations",
-        key,
-        {"config": backup["tunnel_config"]},
-    )
-    _, zone_id, current_records = state(key)
-    originals = backup.get("dns_records") or []
-    if len(current_records) > 1 or len(originals) > 1:
-        raise RuntimeError("refusing ambiguous DNS rollback")
-    if originals and current_records:
-        cf("PUT", f"/zones/{zone_id}/dns_records/{current_records[0]['id']}", key, originals[0])
-    elif originals:
-        cf("POST", f"/zones/{zone_id}/dns_records", key, originals[0])
-    elif current_records:
-        cf("DELETE", f"/zones/{zone_id}/dns_records/{current_records[0]['id']}", key)
+    restore_backup(key, backup)
     print(json.dumps({"action": "rolled_back", "hostname": HOSTNAME}))
 
 
 def status(key: str) -> None:
-    tunnel, _, records = state(key)
+    tunnel, _, records, domains = state(key)
     ingress = list((tunnel.get("config") or {}).get("ingress") or [])
     matches = [rule for rule in ingress if rule.get("hostname") == HOSTNAME]
     print(
@@ -192,6 +229,8 @@ def status(key: str) -> None:
                 "hostname": HOSTNAME,
                 "ingress_count": len(matches),
                 "ingress_service_matches": len(matches) == 1 and matches[0].get("service") == SERVICE,
+                "worker_domain_count": len(domains),
+                "worker_domain_detached": len(domains) == 0,
             },
             sort_keys=True,
         )

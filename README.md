@@ -63,6 +63,13 @@ Required acceptance sequence:
 6. use `register_tunnel_route.py apply`, public-edge smoke, and `status` to route
    the hostname. `rollback` restores the backed-up tunnel and DNS configuration.
 
+Cloudflare Custom Domains create a read-only placeholder DNS record. The route
+tool therefore backs up both the Worker-domain attachment and DNS/tunnel state,
+detaches that domain through the Workers Domains API, waits for its managed DNS
+record to disappear, and then creates the tunnel CNAME. Rollback reverses the
+order so the original Worker attachment can be recreated without a CNAME
+conflict.
+
 The systemd service runs as the dedicated non-login `word-echo-op` user, binds
 only to `127.0.0.1`, sees its immutable release through a read-only bind mount,
 and has no supplementary groups or writable application directory.
