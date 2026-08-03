@@ -8,7 +8,7 @@ Type=simple
 User=word-echo-op
 Group=word-echo-op
 WorkingDirectory=/opt/word-echo-op-runtime
-ExecStart=/opt/word-echo-op-runtime/.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8464 --workers 1 --log-level info --no-access-log
+ExecStart=/usr/bin/env /opt/word-echo-op-runtime/.venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8464 --workers 1 --log-level info --no-access-log
 Environment=PYTHONDONTWRITEBYTECODE=1
 Environment=PYTHONUNBUFFERED=1
 Environment=WORD_ECHO_ASSET_PATH=/opt/word-echo-op-runtime/public/index.html
