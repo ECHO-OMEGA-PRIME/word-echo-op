@@ -150,7 +150,7 @@ contract_value() {
 [ "$(sha256sum "$STRICT_MANIFEST" | awk '{print $1}')" = "$MANIFEST_SHA" ]
 [ "$(sha256sum "$STRICT_ASSET" | awk '{print $1}')" = "$ASSET_SHA" ]
 [ "$(stat -c %s "$STRICT_ASSET")" = "401921" ]
-[ "$(ssh -o BatchMode=yes -o ConnectTimeout=8 anvil "sha256sum '$CATALOG_SOURCE'" | awk '{print $1}')" = "$CATALOG_SHA" ]
+[ "$(sudo -H -u forge ssh -o BatchMode=yes -o ConnectTimeout=8 anvil "sha256sum '$CATALOG_SOURCE'" | awk '{print $1}')" = "$CATALOG_SHA" ]
 [ "$(sudo -u postgres psql -d echo -Atc "SELECT btrim(source_sha256) FROM inventory.cf_migration_status WHERE lower(worker_name)='word-echo-op'")" = "$CATALOG_SHA" ]
 
 "$TEST_PYTHON" -m py_compile "$RELEASE_DIR/app.py" "$RELEASE_DIR/smoke_live.py"
