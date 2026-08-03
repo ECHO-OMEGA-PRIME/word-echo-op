@@ -73,7 +73,10 @@ def cf(method: str, path: str, key: str, payload: dict | None = None):
         method=method,
     )
     with urllib.request.urlopen(req, timeout=30) as response:
-        result = json.loads(response.read())
+        raw = response.read()
+    if not raw:
+        return {}
+    result = json.loads(raw)
     if not result.get("success"):
         raise RuntimeError("Cloudflare operation failed")
     return result["result"]
