@@ -92,7 +92,7 @@ rollback_release() {
   log "restoring prior known-green release"
   if [ -z "$OLD_TARGET" ]; then
     systemctl disable --now "$UNIT" >/dev/null 2>&1 || true
-    rm -f "$CURRENT_LINK"
+    rm -f "$CURRENT_LINK" "$BASE_DIR/app.py"
     restore_unit
     systemctl daemon-reload
     return 0
@@ -100,6 +100,7 @@ rollback_release() {
   case "$OLD_TARGET" in "$RELEASES_DIR"/*) ;; *) return 1 ;; esac
   ln -s "releases/$(basename "$OLD_TARGET")" "$BASE_DIR/.rollback.$RELEASE_ID"
   mv -Tf "$BASE_DIR/.rollback.$RELEASE_ID" "$CURRENT_LINK"
+  ln -sfn current/app.py "$BASE_DIR/app.py"
   restore_unit
   systemctl daemon-reload
   systemctl restart "$UNIT"
@@ -203,6 +204,7 @@ promote() {
   install -m 0644 "$RELEASE_DIR/systemd/word-echo-op.service" "/etc/systemd/system/$UNIT" || return 1
   ln -s "releases/$RELEASE_ID" "$BASE_DIR/.current.$RELEASE_ID" || return 1
   mv -Tf "$BASE_DIR/.current.$RELEASE_ID" "$CURRENT_LINK" || return 1
+  ln -sfn current/app.py "$BASE_DIR/app.py" || return 1
   systemctl daemon-reload || return 1
   systemctl enable "$UNIT" >/dev/null || return 1
   systemctl restart "$UNIT" || return 1

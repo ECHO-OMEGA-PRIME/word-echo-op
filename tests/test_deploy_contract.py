@@ -36,6 +36,7 @@ def test_deploy_gate_contains_required_release_proofs() -> None:
         "WORD_ECHO_FORCE_STAGING_SMOKE_FAIL",
         "WORD_ECHO_FORCE_PROD_SMOKE_FAIL",
         "BindReadOnlyPaths",
+        'ln -sfn current/app.py "$BASE_DIR/app.py"',
     ):
         assert marker in deploy
     assert "DATABASE_URL" not in deploy
